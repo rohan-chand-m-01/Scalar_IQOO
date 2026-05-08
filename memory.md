@@ -239,6 +239,53 @@ Implemented:
      - `run_compliance_check`
      - `run_event_cascade`
 
+### Task: PHASE 5 Prompt 5.1 to 5.6 - Next.js Frontend
+**Status:** In Progress  
+**Date:** 2026-05-09
+
+Implemented so far:
+1. Clerk auth + routing shell:
+   - Added `apps/web/middleware.ts` route protection with public auth routes.
+   - Updated `apps/web/app/layout.tsx` with `ClerkProvider`, RGAI metadata, dark theme, and global toaster.
+   - Added auth pages:
+     - `app/(auth)/sign-in/[[...sign-in]]/page.tsx`
+     - `app/(auth)/sign-up/[[...sign-up]]/page.tsx`
+   - Added dashboard shell:
+     - `app/(dashboard)/layout.tsx`
+     - fixed 240px sidebar nav, header with agent indicator and notifications, websocket integration.
+2. Frontend data layer:
+   - `apps/web/lib/api-client.ts` typed fetch wrapper with Clerk JWT auth and toast-based error handling.
+   - hooks:
+     - `hooks/useWebSocket.ts`
+     - `hooks/useComplianceAlerts.ts`
+     - `hooks/useAuditTrail.ts`
+3. Dashboard pages added:
+   - `app/(dashboard)/page.tsx` (main dashboard skeleton + KPIs/feed/activity/business table wired to APIs)
+   - `app/(dashboard)/compliance-feed/page.tsx`
+   - `app/(dashboard)/obligation-graph/page.tsx`
+   - `app/(dashboard)/gst-filing/page.tsx`
+   - `app/(dashboard)/payroll/page.tsx`
+   - `app/(dashboard)/assistant/page.tsx`
+   - `app/(dashboard)/hitl/page.tsx`
+   - `app/(dashboard)/audit-trail/page.tsx`
+   - `app/(dashboard)/admin/page.tsx`
+4. Reusable component additions:
+   - `components/compliance/DualRailBadge.tsx`
+   - `components/compliance/ConfidenceScore.tsx`
+   - `components/compliance/SourceTrace.tsx`
+   - `components/compliance/RetriggerBanner.tsx`
+   - `components/compliance/ObligationCard.tsx`
+   - `components/agents/AgentStatusPanel.tsx`
+   - `components/graph/KGVisualization.tsx`
+5. Backend endpoints added for frontend support:
+   - `GET /knowledge/graph` (`services/api/routers/knowledge.py`)
+   - `GET /admin/deltas` (`services/api/routers/admin.py`)
+   - `GET /admin/portal-status` (`services/api/routers/admin.py`)
+
+Validation:
+- `npm run lint` passes in `apps/web`.
+- `python -m compileall services/api` passes.
+
 ## How To Use This Memory File
 
 - Append a new section under **Implementation Log** after each task.

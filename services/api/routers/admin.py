@@ -27,6 +27,10 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def _mock_portal_path(portal: str) -> Path:
+    return _repo_root() / "apps" / "mock-portals" / portal / "regulations.json"
+
+
 @router.get("/stats")
 async def stats(db: AsyncSession = Depends(get_db)):
     total_businesses = await db.scalar(select(func.count(Business.id)))
@@ -39,6 +43,41 @@ async def stats(db: AsyncSession = Depends(get_db)):
         "total_alerts": total_alerts or 0,
         "hitl_pending": hitl_pending or 0,
     }
+
+
+@router.get("/deltas")
+async def admin_deltas(db: AsyncSession = Depends(get_db)):
+    rows = await db.scalars(select(RegulationDelta).order_by(RegulationDelta.detected_at.desc()).limit(200))
+    return rows.all()
+
+
+@router.get("/portal-status")
+async def portal_status():
+    out = []
+    for portal in ["gstn", "epfo", "fssai", "pt-states"]:
+        path = _mock_portal_path(portal)
+        if not path.exists():
+            out.append(
+                {
+                    "portal": portal,
+                    "last_checked": None,
+                    "last_hash": None,
+                    "change_detected": False,
+                    "regulations_monitored": 0,
+                }
+            )
+            continue
+        content = json.loads(path.read_text(encoding="utf-8"))
+        out.append(
+            {
+                "portal": portal,
+                "last_checked": content.get("last_updated"),
+                "last_hash": content.get("hash_check"),
+                "change_detected": str(content.get("hash_check", "")).startswith("manual_"),
+                "regulations_monitored": len(content.get("regulations", [])),
+            }
+        )
+    return out
 
 
 @router.post("/seed")
@@ -54,7 +93,7 @@ async def seed_demo_data():
 
 @router.post("/demo/trigger-change")
 async def trigger_change(payload: TriggerChangeRequest, db: AsyncSession = Depends(get_db)):
-    portal_file = _repo_root() / "apps" / "mock-portals" / payload.portal / "regulations.json"
+    portal_file = _mock_portal_path(payload.portal)
     if not portal_file.exists():
         raise HTTPException(status_code=404, detail="Portal file not found")
 

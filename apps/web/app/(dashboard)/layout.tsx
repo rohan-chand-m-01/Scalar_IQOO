@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
   Calendar,
@@ -14,9 +14,11 @@ import {
   Shield,
 } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
+import { useAuth } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { createApiClient } from "@/lib/api-client";
 
 type NavItem = {
   href: string;
@@ -53,9 +55,23 @@ function AgentStatusIndicator({ running }: { running: boolean }) {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
+  const { getToken } = useAuth();
+  const api = useMemo(() => createApiClient({ getToken }), [getToken]);
   const ws = useWebSocket({ url: "ws://localhost:8000/ws/retrigger" });
 
-  const badges = useMemo(() => ({ alerts: 0, hitl: 0 }), []);
+  const [badges, setBadges] = useState<{ alerts: number; hitl: number }>({ alerts: 0, hitl: 0 });
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const st = await api.get<{ total_alerts: number; hitl_pending: number }>("/admin/stats");
+        setBadges({ alerts: st.total_alerts ?? 0, hitl: st.hitl_pending ?? 0 });
+      } catch {
+        // ignore
+      }
+    };
+    load();
+  }, [api]);
 
   if (ws.lastEvent?.event === "regulation_change") {
     toast({

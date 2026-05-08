@@ -13,6 +13,7 @@ from routers.audit import router as audit_router
 from routers.compliance import router as compliance_router
 from routers.gst import router as gst_router
 from routers.hitl import router as hitl_router
+from routers.knowledge import router as knowledge_router
 from routers.obligations import router as obligations_router
 from routers.payroll import router as payroll_router
 from websocket.retrigger_ws import router as websocket_router
@@ -55,6 +56,7 @@ app.include_router(hitl_router)
 app.include_router(audit_router)
 app.include_router(assistant_router)
 app.include_router(admin_router)
+app.include_router(knowledge_router)
 app.include_router(websocket_router)
 
 
