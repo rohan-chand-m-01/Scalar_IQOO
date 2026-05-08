@@ -24,9 +24,9 @@ class AgentIdentity:
             AGENT_REGISTRY[agent_name] = f"did:rgai:{agent_name}-{_stable_suffix(agent_name)}"
         return AGENT_REGISTRY[agent_name]
 
-    def sign_action(self, agent_name: str, action_payload: dict) -> str:
+    def sign_action(self, agent_name: str, action_payload: dict, timestamp_iso: str | None = None) -> str:
         agent_did = self.get_did(agent_name)
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = timestamp_iso or datetime.now(timezone.utc).isoformat()
         payload = json.dumps(action_payload, sort_keys=True, separators=(",", ":"))
         raw = f"{agent_did}{timestamp}{payload}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()

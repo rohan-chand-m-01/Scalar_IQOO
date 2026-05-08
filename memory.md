@@ -293,6 +293,11 @@ Implemented so far:
      - delta rows expand to show before/after field changes and re-triggered vs skipped split.
    - Updated `apps/web/app/(dashboard)/page.tsx` KPI cards and business table health bar to use `health_score` and `regulation_changes_24h` from updated `/compliance/businesses` and `/admin/stats`.
    - Added DPDP endpoints in backend (`/admin/dpdp/stats`, `/admin/dpdp/simulate-breach`) and updated admin page to show DPDP status + simulate button.
+   - Added “Highlight recent changes” option in Obligation Graph page using `/admin/deltas` changed regulation IDs to visually outline impacted nodes.
+   - Enhanced GST Filing page with a visible checklist from `missing_items`.
+   - Enhanced HITL page with a Review modal showing full Rail A/Rail B payloads and divergence reason.
+   - Updated CAAL signing to use the entry timestamp so hashes are verifiable client-side.
+   - Updated Audit Trail page “Verify Hash” to recompute SHA-256 in the browser and compare to stored `action_hash`.
 
 Validation:
 - `npm run lint` passes in `apps/web`.

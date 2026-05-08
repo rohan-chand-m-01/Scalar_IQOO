@@ -7,6 +7,7 @@ import { createApiClient } from "@/lib/api-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function HITLPage() {
   const { getToken } = useAuth();
@@ -81,6 +82,36 @@ export default function HITLPage() {
                     />
                   </td>
                   <td className="space-x-2">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="secondary">
+                          Review
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-[#0f1117] text-white border-white/10 max-w-3xl">
+                        <DialogHeader>
+                          <DialogTitle>HITL Review</DialogTitle>
+                        </DialogHeader>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                            <div className="text-sm font-semibold">Rail A</div>
+                            <pre className="mt-2 text-xs font-mono overflow-auto max-h-[320px]">
+                              {JSON.stringify(q.rail_a_response ?? {}, null, 2)}
+                            </pre>
+                          </div>
+                          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                            <div className="text-sm font-semibold">Rail B</div>
+                            <pre className="mt-2 text-xs font-mono overflow-auto max-h-[320px]">
+                              {JSON.stringify(q.rail_b_response ?? {}, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                          <div className="text-sm font-semibold">Divergence analysis</div>
+                          <div className="mt-2 text-sm text-white/70">{q.divergence_reason}</div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                     <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500" onClick={() => resolve(q.id, "approved")}>
                       Approve
                     </Button>

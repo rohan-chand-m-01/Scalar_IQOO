@@ -2,6 +2,7 @@ from sqlalchemy import func, select
 
 from services.agents.caal.agent_identity import AgentIdentity
 from services.api.database import CAALLedger
+from datetime import datetime, timezone
 
 
 class LedgerWriter:
@@ -23,7 +24,8 @@ class LedgerWriter:
         db_session,
     ) -> str:
         agent_did = self.identity.get_did(agent_name)
-        signature = self.identity.sign_action(agent_name, action_payload)
+        ts = datetime.now(timezone.utc)
+        signature = self.identity.sign_action(agent_name, action_payload, ts.isoformat())
         entry = CAALLedger(
             agent_did=agent_did,
             agent_name=agent_name,
@@ -40,6 +42,7 @@ class LedgerWriter:
             human_approver_id=action_payload.get("human_approver_id"),
             action_hash=signature,
             source_citations={"items": source_citations},
+            timestamp=ts,
         )
         db_session.add(entry)
         await db_session.commit()

@@ -77,6 +77,21 @@ export default function GSTFilingPage() {
       </div>
 
       <Card className="border-white/10 bg-white/5 p-4">
+        <div className="text-sm font-semibold">Checklist</div>
+        <div className="mt-3 space-y-2">
+          {(status?.missing_items ?? []).length === 0 ? (
+            <div className="text-sm text-white/60">All checklist items satisfied.</div>
+          ) : (
+            (status?.missing_items ?? []).map((m: string, idx: number) => (
+              <div key={idx} className="rounded-md border border-white/10 bg-black/20 p-3 text-sm">
+                <span className="text-amber-200">✗</span> <span className="text-white/80">{m}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+
+      <Card className="border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold">Export</div>
           <Button className="bg-[#3b82f6] hover:bg-[#3b82f6]/90" onClick={doExport}>

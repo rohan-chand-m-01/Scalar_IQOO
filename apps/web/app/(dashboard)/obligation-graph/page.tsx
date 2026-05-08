@@ -29,6 +29,8 @@ export default function ObligationGraphPage() {
   const api = useMemo(() => createApiClient({ getToken }), [getToken]);
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
+  const [highlightRecent, setHighlightRecent] = useState<boolean>(true);
+  const [recentNodeIds, setRecentNodeIds] = useState<string[]>([]);
   const [domains, setDomains] = useState<Record<string, boolean>>({
     GST: true,
     PF: true,
@@ -41,6 +43,26 @@ export default function ObligationGraphPage() {
   useEffect(() => {
     api.get<{ nodes: GraphNode[]; edges: GraphEdge[] }>("/knowledge/graph").then(setGraph);
   }, [api]);
+
+  useEffect(() => {
+    const loadRecent = async () => {
+      try {
+        const deltas = await api.get<any[]>("/admin/deltas");
+        const changedRegs = new Set<string>();
+        for (const d of deltas ?? []) {
+          for (const rid of (d.changed_regulation_ids ?? []) as string[]) changedRegs.add(rid);
+        }
+        const ids =
+          (graph?.nodes ?? [])
+            .filter((n) => changedRegs.has(n.regulation_id))
+            .map((n) => n.node_id) ?? [];
+        setRecentNodeIds(ids);
+      } catch {
+        setRecentNodeIds([]);
+      }
+    };
+    loadRecent();
+  }, [api, graph?.nodes]);
 
   const filteredNodes = (graph?.nodes ?? []).filter((n) => domains[n.domain] !== false);
   const filteredSet = new Set(filteredNodes.map((n) => n.node_id));
@@ -67,6 +89,10 @@ export default function ObligationGraphPage() {
         <div className="text-sm font-semibold">Graph stats</div>
         <div className="mt-2 text-xs font-mono text-white/60">
           nodes: {filteredNodes.length} • edges: {filteredEdges.length}
+        </div>
+        <div className="mt-3 flex items-center justify-between text-sm text-white/80">
+          <span>Highlight recent changes</span>
+          <input type="checkbox" checked={highlightRecent} onChange={(e) => setHighlightRecent(e.target.checked)} />
         </div>
 
         <Separator className="my-4 bg-white/10" />
@@ -96,6 +122,7 @@ export default function ObligationGraphPage() {
           nodes={filteredNodes as any}
           edges={filteredEdges}
           onNodeClick={(n) => setSelected(n as any)}
+          highlightedNodeIds={highlightRecent ? recentNodeIds : []}
         />
       </div>
     </div>

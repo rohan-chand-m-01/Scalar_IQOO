@@ -31,8 +31,26 @@ export default function AuditTrailPage() {
     URL.revokeObjectURL(url);
   };
 
-  const runVerify = (entry: any) => {
-    setVerify((v) => ({ ...v, [entry.id]: entry.action_hash ? "hash present" : "missing hash" }));
+  const sha256Hex = async (input: string) => {
+    const enc = new TextEncoder().encode(input);
+    const hash = await crypto.subtle.digest("SHA-256", enc);
+    return Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  };
+
+  const runVerify = async (entry: any) => {
+    if (!entry?.agent_did || !entry?.timestamp || !entry?.action_payload || !entry?.action_hash) {
+      setVerify((v) => ({ ...v, [entry.id]: "insufficient data to verify" }));
+      return;
+    }
+    const payload = JSON.stringify(entry.action_payload ?? {}, Object.keys(entry.action_payload ?? {}).sort(), 0);
+    const raw = `${entry.agent_did}${entry.timestamp}${payload}`;
+    const computed = await sha256Hex(raw);
+    setVerify((v) => ({
+      ...v,
+      [entry.id]: computed === entry.action_hash ? "✓ hash verified" : "✗ hash mismatch",
+    }));
   };
 
   return (

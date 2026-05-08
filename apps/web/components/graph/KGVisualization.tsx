@@ -28,10 +28,12 @@ export function KGVisualization({
   nodes,
   edges,
   onNodeClick,
+  highlightedNodeIds,
 }: {
   nodes: Node[];
   edges: Edge[];
   onNodeClick?: (node: Node) => void;
+  highlightedNodeIds?: string[];
 }) {
   const ref = useRef<SVGSVGElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -64,6 +66,8 @@ export function KGVisualization({
       .join("line")
       .attr("stroke-dasharray", (d) => (d.edge_type === "updates" ? "4 4" : d.edge_type === "invalidates" ? "2 6" : "0"));
 
+    const highlightSet = new Set(highlightedNodeIds ?? []);
+
     const node = g
       .append("g")
       .selectAll("circle")
@@ -71,8 +75,8 @@ export function KGVisualization({
       .join("circle")
       .attr("r", 10)
       .attr("fill", (d: Node) => DOMAIN_COLOR[d.domain] ?? "#94a3b8")
-      .attr("stroke", "rgba(0,0,0,0.4)")
-      .attr("stroke-width", 1.5)
+      .attr("stroke", (d: Node) => (highlightSet.has(d.node_id) ? "#3b82f6" : "rgba(0,0,0,0.4)"))
+      .attr("stroke-width", (d: Node) => (highlightSet.has(d.node_id) ? 3 : 1.5))
       .style("cursor", "pointer")
       .on("click", (_, d: Node) => onNodeClick?.(d))
       .on("mousemove", (event, d: Node) => {
@@ -108,7 +112,7 @@ export function KGVisualization({
     return () => {
       simulation.stop();
     };
-  }, [data, onNodeClick]);
+  }, [data, onNodeClick, highlightedNodeIds]);
 
   return (
     <div className="relative">
