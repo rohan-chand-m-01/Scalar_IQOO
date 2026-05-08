@@ -281,6 +281,18 @@ Implemented so far:
    - `GET /knowledge/graph` (`services/api/routers/knowledge.py`)
    - `GET /admin/deltas` (`services/api/routers/admin.py`)
    - `GET /admin/portal-status` (`services/api/routers/admin.py`)
+   - `GET /admin/portal/{portal_name}` (`services/api/routers/admin.py`)
+   - Enhanced:
+     - `GET /admin/stats` now includes `regulation_changes_24h`, `caal_entries`, `graph_nodes`
+     - `GET /compliance/businesses` now returns per-business compliance `health_score`, flags (GST/PF/ESI/FSSAI/PT), and `last_updated`
+     - `GET /admin/deltas` now includes `affected_businesses` and `skipped_businesses` using the KG cascade mapping
+6. Frontend improvements:
+   - Updated `apps/web/app/(dashboard)/compliance-feed/page.tsx`:
+     - portal status cards via `/admin/portal-status`
+     - modal uses portal/regulation selectors via `/admin/portal/{portal_name}`
+     - delta rows expand to show before/after field changes and re-triggered vs skipped split.
+   - Updated `apps/web/app/(dashboard)/page.tsx` KPI cards and business table health bar to use `health_score` and `regulation_changes_24h` from updated `/compliance/businesses` and `/admin/stats`.
+   - Added DPDP endpoints in backend (`/admin/dpdp/stats`, `/admin/dpdp/simulate-breach`) and updated admin page to show DPDP status + simulate button.
 
 Validation:
 - `npm run lint` passes in `apps/web`.

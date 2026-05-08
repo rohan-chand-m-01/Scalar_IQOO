@@ -1,7 +1,7 @@
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,10 +10,14 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import Business, ComplianceAlert, HITLQueue, Obligation, RegulationDelta, get_db
+from database import Business, CAALLedger, ComplianceAlert, HITLQueue, Obligation, RegulationDelta, VaultToken, get_db
+from services.knowledge.obligation_graph.graph_builder import ObligationGraphBuilder
+from services.agents.dpdp.breach_detector import BreachDetector
 from websocket.retrigger_ws import broadcast_compliance_update, broadcast_regulation_change
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+_LAST_BREACH_CHECK_AT: datetime | None = None
 
 
 class TriggerChangeRequest(BaseModel):
@@ -37,18 +41,68 @@ async def stats(db: AsyncSession = Depends(get_db)):
     total_obligations = await db.scalar(select(func.count(Obligation.id)))
     total_alerts = await db.scalar(select(func.count(ComplianceAlert.id)))
     hitl_pending = await db.scalar(select(func.count(HITLQueue.id)).where(HITLQueue.status == "pending"))
+    regulation_changes_24h = await db.scalar(
+        select(func.count(RegulationDelta.id)).where(RegulationDelta.detected_at >= (datetime.now(timezone.utc) - timedelta(hours=24)))
+    )
+    caal_entries = await db.scalar(select(func.count(CAALLedger.id)))
+
+    # KG nodes are static for now (in-memory builder).
+    graph_builder = ObligationGraphBuilder()
+    graph_builder.build_graph()
+    graph_nodes = graph_builder.graph.number_of_nodes()
     return {
         "total_businesses": total_businesses or 0,
         "total_obligations": total_obligations or 0,
         "total_alerts": total_alerts or 0,
         "hitl_pending": hitl_pending or 0,
+        "regulation_changes_24h": regulation_changes_24h or 0,
+        "caal_entries": caal_entries or 0,
+        "graph_nodes": graph_nodes,
     }
 
 
 @router.get("/deltas")
 async def admin_deltas(db: AsyncSession = Depends(get_db)):
-    rows = await db.scalars(select(RegulationDelta).order_by(RegulationDelta.detected_at.desc()).limit(200))
-    return rows.all()
+    deltas = await db.scalars(select(RegulationDelta).order_by(RegulationDelta.detected_at.desc()).limit(200))
+    all_businesses = await db.scalars(select(Business))
+    business_list = list(all_businesses.all())
+
+    graph_builder = ObligationGraphBuilder()
+    graph_builder.build_graph()
+
+    business_dicts = [
+        {
+            "id": str(b.id),
+            "business_type": b.business_type,
+            "state": b.state,
+            "annual_turnover": b.annual_turnover,
+            "employee_count": b.employee_count,
+            "fssai_registered": b.fssai_registered,
+        }
+        for b in business_list
+    ]
+    id_to_name = {str(b.id): b.name for b in business_list}
+
+    out = []
+    for d in deltas.all():
+        changed_ids = list(d.changed_regulation_ids or [])
+        affected_ids: set[str] = set()
+        for rid in changed_ids:
+            for bid in graph_builder.get_affected_businesses_for_regulation(rid, business_dicts):
+                affected_ids.add(str(bid))
+
+        skipped_ids = [str(b.id) for b in business_list if str(b.id) not in affected_ids]
+
+        d_dict = {k: v for k, v in d.__dict__.items() if not k.startswith("_")}
+        out.append(
+            {
+                **d_dict,
+                "changed_regulation_ids": changed_ids,
+                "affected_businesses": [{"id": bid, "name": id_to_name.get(bid)} for bid in sorted(affected_ids)],
+                "skipped_businesses": [{"id": bid, "name": id_to_name.get(bid)} for bid in sorted(skipped_ids)],
+            }
+        )
+    return out
 
 
 @router.get("/portal-status")
@@ -80,6 +134,17 @@ async def portal_status():
     return out
 
 
+@router.get("/portal/{portal_name}")
+async def get_portal_data(portal_name: str):
+    allowed = {"gstn", "epfo", "fssai", "pt-states"}
+    if portal_name not in allowed:
+        raise HTTPException(status_code=404, detail="Unknown portal")
+    path = _mock_portal_path(portal_name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Portal data not found")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 @router.post("/seed")
 async def seed_demo_data():
     script = _repo_root() / "data" / "seed" / "seed_db.py"
@@ -99,8 +164,10 @@ async def trigger_change(payload: TriggerChangeRequest, db: AsyncSession = Depen
 
     content = json.loads(portal_file.read_text(encoding="utf-8"))
     changed = False
+    old_value = None
     for reg in content.get("regulations", []):
         if reg.get("id") == payload.regulation_id:
+            old_value = reg.get(payload.field)
             reg[payload.field] = payload.new_value
             changed = True
             break
@@ -111,12 +178,24 @@ async def trigger_change(payload: TriggerChangeRequest, db: AsyncSession = Depen
     content["hash_check"] = f"manual_{uuid4().hex[:10]}"
     portal_file.write_text(json.dumps(content, indent=2), encoding="utf-8")
 
+    delta_summary = {
+        "changes": [
+            {
+                "regulation_id": payload.regulation_id,
+                "field_changed": payload.field,
+                "old_value": old_value,
+                "new_value": payload.new_value,
+                "impact_category": "financial" if payload.field in {"value", "amount"} else "procedural",
+            }
+        ]
+    }
+
     delta = RegulationDelta(
         portal_name=payload.portal,
         previous_hash="unknown",
         new_hash=content["hash_check"],
         changed_regulation_ids=[payload.regulation_id],
-        delta_summary={"field": payload.field, "new_value": payload.new_value},
+        delta_summary=delta_summary,
         affected_business_count=8,
         processed=False,
     )
@@ -144,6 +223,34 @@ async def reset_demo_state(db: AsyncSession = Depends(get_db)):
     await db.execute(delete(ComplianceAlert))
     await db.execute(delete(HITLQueue))
     await db.execute(delete(Obligation))
+    await db.execute(
+        Business.__table__.update().values(
+            dpdp_consent_given=False,
+            dpdp_consent_at=None,
+        )
+    )
     await db.commit()
     await broadcast_compliance_update("all", "Demo state has been reset")
     return {"status": "ok", "message": "All obligations and alerts reset"}
+
+
+@router.get("/dpdp/stats")
+async def dpdp_stats(db: AsyncSession = Depends(get_db)):
+    token_count = await db.scalar(select(func.count(VaultToken.id)))
+    consent_count = await db.scalar(select(func.count(Business.id)).where(Business.dpdp_consent_given.is_(True)))
+    return {
+        "vault_tokens_count": token_count or 0,
+        "consent_given_count": consent_count or 0,
+        "last_breach_check_at": _LAST_BREACH_CHECK_AT.isoformat() if _LAST_BREACH_CHECK_AT else None,
+    }
+
+
+@router.post("/dpdp/simulate-breach")
+async def simulate_breach(business_id: str, db: AsyncSession = Depends(get_db)):
+    global _LAST_BREACH_CHECK_AT
+    detector = BreachDetector()
+    breach = detector.simulate_breach_detection(business_id)
+    _LAST_BREACH_CHECK_AT = datetime.now(timezone.utc)
+    business = await db.get(Business, business_id)
+    msg = detector.draft_dpb_notification(breach, {"name": business.name if business else "Business"})
+    return {"breach_details": breach, "notification_text": msg, "last_breach_check_at": _LAST_BREACH_CHECK_AT.isoformat()}

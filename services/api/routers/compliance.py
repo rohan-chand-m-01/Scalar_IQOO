@@ -18,15 +18,49 @@ async def list_businesses_with_summary(db: AsyncSession = Depends(get_db)):
             Business.name,
             Business.business_type,
             Business.state,
+            Business.gst_registered,
+            Business.pf_registered,
+            Business.esi_registered,
+            Business.fssai_registered,
+            Business.pt_state,
             func.count(Obligation.id).label("total"),
             func.sum(case((Obligation.status == "pending", 1), else_=0)).label("pending"),
             func.sum(case((Obligation.status == "overdue", 1), else_=0)).label("overdue"),
             func.sum(case((Obligation.status == "compliant", 1), else_=0)).label("compliant"),
+            func.sum(case((Obligation.status == "hitl_escalated", 1), else_=0)).label("hitl_escalated"),
+            func.sum(case((Obligation.status == "waived", 1), else_=0)).label("waived"),
+            func.max(Obligation.updated_at).label("last_updated"),
         )
         .outerjoin(Obligation, Obligation.business_id == Business.id)
         .group_by(Business.id)
     )
-    return [dict(r._mapping) for r in rows]
+
+    def score_for(row: dict) -> float:
+        total = row.get("total") or 0
+        if total <= 0:
+            return 100.0
+        weights = {
+            "compliant": 1.0,
+            "pending": 0.6,
+            "overdue": 0.0,
+            "hitl_escalated": 0.4,
+            "waived": 0.8,
+        }
+        score = (
+            float(row.get("compliant") or 0) * weights["compliant"]
+            + float(row.get("pending") or 0) * weights["pending"]
+            + float(row.get("overdue") or 0) * weights["overdue"]
+            + float(row.get("hitl_escalated") or 0) * weights["hitl_escalated"]
+            + float(row.get("waived") or 0) * weights["waived"]
+        )
+        return round((score / float(total)) * 100.0, 2)
+
+    out: list[dict] = []
+    for r in rows.all():
+        row = dict(r._mapping)
+        row["health_score"] = score_for(row)
+        out.append(row)
+    return out
 
 
 @router.get("/businesses/{business_id}")

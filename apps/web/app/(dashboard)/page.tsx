@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { ConfidenceScore } from "@/components/compliance/ConfidenceScore";
 
 type BusinessRow = {
   id: string;
@@ -24,6 +25,8 @@ type BusinessRow = {
   pending?: number;
   overdue?: number;
   compliant?: number;
+  health_score?: number;
+  last_updated?: string;
 };
 
 function kpiCard(title: string, value: React.ReactNode, sub?: React.ReactNode) {
@@ -42,7 +45,7 @@ export default function DashboardPage() {
   const ws = useWebSocket({ url: "ws://localhost:8000/ws/retrigger" });
 
   const [businesses, setBusinesses] = useState<BusinessRow[] | null>(null);
-  const [stats, setStats] = useState<{ hitl_pending?: number } | null>(null);
+  const [stats, setStats] = useState<{ hitl_pending?: number; regulation_changes_24h?: number } | null>(null);
 
   const { entries, fetchLedger } = useAuditTrail();
   // demo: alerts bound to first business when available
@@ -72,6 +75,10 @@ export default function DashboardPage() {
 
   const overdueCount = (businesses ?? []).reduce((acc, b) => acc + (b.overdue ?? 0), 0);
   const pendingCount = (businesses ?? []).reduce((acc, b) => acc + (b.pending ?? 0), 0);
+  const healthAvg =
+    businesses && businesses.length > 0
+      ? businesses.reduce((acc, b) => acc + (b.health_score ?? 100), 0) / businesses.length
+      : 0;
 
   return (
     <div className="space-y-6">
@@ -89,10 +96,36 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        {kpiCard("COMPLIANCE HEALTH (DEMO)", <span className="font-mono">—</span>, "Computed per business via /compliance/health-score")}
-        {kpiCard("ACTIVE OBLIGATIONS", <span className="font-mono">{pendingCount + overdueCount}</span>, <span className="font-mono text-white/70">pending {pendingCount} • overdue {overdueCount}</span>)}
-        {kpiCard("HITL QUEUE", <span className="font-mono">{stats?.hitl_pending ?? "—"}</span>, stats?.hitl_pending ? <span className="text-amber-300">Requires Attention</span> : "All clear")}
-        {kpiCard("REGULATION CHANGES (24H)", <span className="font-mono">—</span>, "Backed by regulation_deltas")}
+        <Card className="border-white/10 bg-white/5 p-4">
+          <div className="text-xs font-mono text-white/60">Compliance Health Score</div>
+          <div className="mt-3">
+            <ConfidenceScore score={(healthAvg ?? 0) / 100} size="lg" />
+          </div>
+          <div className="mt-2 text-xs font-mono text-white/60">
+            avg across {businesses?.length ?? 0} businesses
+          </div>
+        </Card>
+        {kpiCard(
+          "ACTIVE OBLIGATIONS",
+          <span className="font-mono">{pendingCount + overdueCount}</span>,
+          <span className="font-mono text-white/70">
+            pending {pendingCount} • overdue {overdueCount}
+          </span>
+        )}
+        {kpiCard(
+          "HITL QUEUE",
+          <span className="font-mono">{stats?.hitl_pending ?? 0}</span>,
+          stats?.hitl_pending && stats.hitl_pending > 0 ? (
+            <span className="text-amber-300">Requires Attention</span>
+          ) : (
+            "All clear"
+          )
+        )}
+        {kpiCard(
+          "REGULATION CHANGES (24H)",
+          <span className="font-mono">{stats?.regulation_changes_24h ?? 0}</span>,
+          "Detected via regulation_deltas"
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -179,8 +212,7 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {businesses.map((b) => {
-                  const total = (b.total ?? 0) || 1;
-                  const health = Math.round(((b.compliant ?? 0) / total) * 100);
+                  const health = Math.round(b.health_score ?? 0);
                   return (
                     <tr key={b.id} className="border-t border-white/10">
                       <td className="py-3 font-semibold">{b.name}</td>

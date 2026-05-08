@@ -14,6 +14,7 @@ export default function AdminPage() {
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [portalStatus, setPortalStatus] = useState<any[]>([]);
+  const [dpdpStats, setDpdpStats] = useState<any>(null);
   const [portal, setPortal] = useState("gstn");
   const [regId, setRegId] = useState("GST_LATE_FEE_001");
   const [field, setField] = useState("value");
@@ -21,14 +22,16 @@ export default function AdminPage() {
   const [statusText, setStatusText] = useState("");
 
   const load = async () => {
-    const [st, us, ps] = await Promise.all([
+    const [st, us, ps, dp] = await Promise.all([
       api.get("/admin/stats"),
       api.get<any[]>("/admin/users"),
       api.get<any[]>("/admin/portal-status"),
+      api.get<any>("/admin/dpdp/stats"),
     ]);
     setStats(st);
     setUsers(us);
     setPortalStatus(ps);
+    setDpdpStats(dp);
   };
 
   useEffect(() => {
@@ -51,6 +54,13 @@ export default function AdminPage() {
   const reseed = async () => {
     await api.post("/admin/seed");
     await load();
+  };
+
+  const simulateBreach = async () => {
+    const businessId = users?.[0]?.id ?? "11111111-1111-1111-1111-111111111001";
+    const res = await api.post("/admin/dpdp/simulate-breach", { business_id: businessId });
+    setDpdpStats((prev: any) => ({ ...prev, ...res }));
+    setStatusText(res?.notification_text?.slice(0, 80) ? `Breach simulated. ${res.notification_text.slice(0, 80)}…` : "Breach simulated.");
   };
 
   return (
@@ -122,6 +132,31 @@ export default function AdminPage() {
               <div className="text-xs text-white/60">regs: {p.regulations_monitored}</div>
             </Card>
           ))}
+        </div>
+      </Card>
+
+      <Card className="border-white/10 bg-white/5 p-4">
+        <div className="text-sm font-semibold">DPDP Status</div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+            <div className="text-xs font-mono text-white/60">vault_tokens</div>
+            <div className="mt-1 font-mono">{dpdpStats?.vault_tokens_count ?? 0}</div>
+          </div>
+          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+            <div className="text-xs font-mono text-white/60">consent given</div>
+            <div className="mt-1 font-mono">{dpdpStats?.consent_given_count ?? 0}</div>
+          </div>
+          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+            <div className="text-xs font-mono text-white/60">last breach check</div>
+            <div className="mt-1 font-mono text-xs">{dpdpStats?.last_breach_check_at ?? "—"}</div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <Button className="bg-[#3b82f6] hover:bg-[#3b82f6]/90" onClick={simulateBreach}>
+            Simulate Breach Detection
+          </Button>
+          <span className="text-sm text-white/70">{statusText}</span>
         </div>
       </Card>
     </div>
