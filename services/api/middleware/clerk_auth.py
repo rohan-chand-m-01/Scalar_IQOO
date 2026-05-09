@@ -3,9 +3,22 @@ from fastapi.responses import JSONResponse
 import jwt
 import os
 
+
 async def clerk_auth_middleware(request: Request, call_next):
     path = request.url.path
+
+    # Always allow these paths without auth
     if path.startswith(("/health", "/docs", "/openapi.json", "/ws/")) or path == "/":
+        return await call_next(request)
+
+    # Allow preflight OPTIONS requests (CORS)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
+    # Demo mode: skip auth entirely when Clerk is not configured
+    clerk_key = os.getenv("CLERK_SECRET_KEY", "")
+    if not clerk_key:
+        request.state.user_id = "demo_user"
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization")

@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   postgres:
@@ -8,7 +7,7 @@ services:
       POSTGRES_USER: rguser
       POSTGRES_PASSWORD: rgpass123
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,7 +15,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  
+
   redis:
     image: redis:7-alpine
     ports:
@@ -24,35 +23,51 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-  
+
   api:
     build: ./services/api
     ports:
-      - "8000:8000"
+      - "8001:8000"
+
     environment:
       - DATABASE_URL=postgresql+asyncpg://rguser:rgpass123@postgres:5432/regraph
       - SYNC_DATABASE_URL=postgresql://rguser:rgpass123@postgres:5432/regraph
       - REDIS_URL=redis://redis:6379
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - PYTHONPATH=/app
+
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
+
     volumes:
-      - ./chroma_db:/app/chroma_db
-      - ./data:/app/data
-      - ./services/api:/app
+      - .:/app
+
+    working_dir: /app/services/api
+
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-  
+
   scheduler:
     build: ./services/api
+
     environment:
       - DATABASE_URL=postgresql+asyncpg://rguser:rgpass123@postgres:5432/regraph
       - SYNC_DATABASE_URL=postgresql://rguser:rgpass123@postgres:5432/regraph
       - REDIS_URL=redis://redis:6379
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
-    command: python -c "from scheduler.polling_jobs import SchedulerJobs; from websocket.retrigger_ws import manager; from services.knowledge.obligation_graph.graph_builder import ObligationGraphBuilder; builder = ObligationGraphBuilder(); builder.build_graph(); s = SchedulerJobs(builder, manager); s.start(); import asyncio; asyncio.get_event_loop().run_forever()"
+      - PYTHONPATH=/app
+
+    volumes:
+      - .:/app
+
+    working_dir: /app/services/api
+
+    command: python -c "import sys; sys.path.insert(0, '/app'); from services.scheduler.polling_jobs import SchedulerJobs; from websocket.retrigger_ws import manager; from services.knowledge.obligation_graph.graph_builder import ObligationGraphBuilder; builder = ObligationGraphBuilder(); builder.build_graph(); s = SchedulerJobs(builder, manager); s.start(); import asyncio; asyncio.get_event_loop().run_forever()"
+
     depends_on:
       api:
         condition: service_started

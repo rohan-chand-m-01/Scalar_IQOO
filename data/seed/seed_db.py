@@ -18,9 +18,11 @@ def load_json(path: Path):
 
 
 def get_connection():
-    database_url = os.getenv("DATABASE_URL")
+    database_url = os.getenv("SYNC_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not database_url:
-        raise RuntimeError("DATABASE_URL is not set.")
+        raise RuntimeError("DATABASE_URL or SYNC_DATABASE_URL is not set.")
+    # Strip asyncpg driver prefix if present (psycopg2 can't parse it)
+    database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
     return psycopg2.connect(database_url)
 
 

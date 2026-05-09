@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useAuth } from "@clerk/nextjs";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { createApiClient } from "@/lib/api-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ const PORTAL_DOT: Record<string, string> = {
 export default function ComplianceFeedPage() {
   const { getToken } = useAuth();
   const api = useMemo(() => createApiClient({ getToken }), [getToken]);
-  const ws = useWebSocket({ url: "ws://localhost:8000/ws/retrigger" });
+  const ws = useWebSocket({ url: process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8001/ws/retrigger" });
 
   const [deltas, setDeltas] = useState<DeltaRow[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -52,6 +52,7 @@ export default function ComplianceFeedPage() {
   const [newValue, setNewValue] = useState<string>("250");
   const [portalStatuses, setPortalStatuses] = useState<any[]>([]);
   const [portalRegs, setPortalRegs] = useState<any[]>([]);
+  const [isTriggering, setIsTriggering] = useState(false);
 
   const load = async () => {
     try {
@@ -103,14 +104,20 @@ export default function ComplianceFeedPage() {
   }, [ws.lastEvent]);
 
   const triggerChange = async () => {
-    const payload: any = {
-      portal,
-      regulation_id: regulationId,
-      field,
-      new_value: field === "value" ? Number(newValue) : newValue,
-    };
-    await api.post("/admin/demo/trigger-change", payload);
-    setOpen(false);
+    if (isTriggering) return;
+    setIsTriggering(true);
+    try {
+      const payload: any = {
+        portal,
+        regulation_id: regulationId,
+        field,
+        new_value: field === "value" ? Number(newValue) : newValue,
+      };
+      await api.post("/admin/demo/trigger-change", payload);
+      setOpen(false);
+    } finally {
+      setIsTriggering(false);
+    }
   };
 
   const bannerEvent =
@@ -225,8 +232,10 @@ export default function ComplianceFeedPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={triggerChange} className="bg-blue-500 hover:bg-blue-600">Push Change</Button>
+                <Button variant="secondary" onClick={() => setOpen(false)} disabled={isTriggering}>Cancel</Button>
+                <Button onClick={triggerChange} disabled={isTriggering} className="bg-blue-500 hover:bg-blue-600">
+                  {isTriggering ? "Pushing..." : "Push Change"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -250,7 +259,7 @@ export default function ComplianceFeedPage() {
             </thead>
             <tbody>
               {deltas.map((d) => (
-                <tbody key={d.id}>
+                <Fragment key={d.id}>
                   <tr className="border-t border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                     <td className="py-3 pr-4">
                       <span className={`inline-flex items-center gap-1.5 font-mono text-xs`}>
@@ -316,7 +325,7 @@ export default function ComplianceFeedPage() {
                                   {(d.affected_businesses ?? []).length === 0 ? (
                                     <div className="text-[11px] text-white/20">—</div>
                                   ) : (
-                                    (d.affected_businesses ?? []).map((b) => (
+                                    (d.affected_businesses ?? []).map((b: any) => (
                                       <div key={b.id} className="text-[11px] font-mono text-white/60">{b.name ?? b.id}</div>
                                     ))
                                   )}
@@ -329,7 +338,7 @@ export default function ComplianceFeedPage() {
                                     <div className="text-[11px] text-white/20">—</div>
                                   ) : (
                                     <>
-                                      {(d.skipped_businesses ?? []).slice(0, 10).map((b) => (
+                                      {(d.skipped_businesses ?? []).slice(0, 10).map((b: any) => (
                                         <div key={b.id} className="text-[11px] font-mono text-white/40">{b.name ?? b.id}</div>
                                       ))}
                                       {(d.skipped_businesses ?? []).length > 10 && (
@@ -345,7 +354,7 @@ export default function ComplianceFeedPage() {
                       </td>
                     </tr>
                   )}
-                </tbody>
+                </Fragment>
               ))}
               {deltas.length === 0 && (
                 <tr>

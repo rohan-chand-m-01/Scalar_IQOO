@@ -13,9 +13,9 @@ from services.api.database import RegulationDelta, RegulationSnapshot
 
 class RegulationWatcher:
     async def fetch_portal_data(self, portal_name: str, url: str) -> dict:
-        import redis
+        import redis as _redis
         try:
-            r = redis.Redis(host="localhost", port=6379, db=0)
+            r = _redis.from_url(settings.redis_url)
             override = r.get(f"portal_override:{portal_name}")
             if override:
                 return json.loads(override)

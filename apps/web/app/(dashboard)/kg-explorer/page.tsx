@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useMemo, useState } from "react";
@@ -57,9 +58,12 @@ export default function KGExplorerPage() {
           {graphData ? (
             <KGVisualization
               nodes={graphData.nodes.map((n) => ({
-                id: n.node_id,
+                node_id: n.node_id,
                 domain: n.domain,
-                type: n.domain,
+                title: n.title,
+                threshold_type: n.threshold_type,
+                threshold_value: n.threshold_value,
+                due_date_rule: n.due_date_rule,
               }))}
               edges={graphData.edges}
               width={800}

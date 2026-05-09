@@ -158,11 +158,11 @@ async def seed_demo_data():
 
 @router.post("/demo/trigger-change")
 async def trigger_change(payload: TriggerChangeRequest, db: AsyncSession = Depends(get_db)):
-    import redis
+    import redis as _redis
     import json
-    from fastapi import Request
     from services.agents.irda.orchestrator import IRDAOrchestrator
     from services.knowledge.obligation_graph.graph_builder import ObligationGraphBuilder
+    from config import settings
 
     # Fetch current file or HTTP, for demo we just read the local file
     portal_file = _mock_portal_path(payload.portal)
@@ -185,7 +185,7 @@ async def trigger_change(payload: TriggerChangeRequest, db: AsyncSession = Depen
     content["hash_check"] = f"manual_{uuid4().hex[:10]}"
 
     # Write to Redis
-    r = redis.Redis(host="localhost", port=6379, db=0)
+    r = _redis.from_url(settings.redis_url)
     try:
         r.set(f"portal_override:{payload.portal}", json.dumps(content))
     except Exception as e:

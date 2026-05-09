@@ -296,8 +296,8 @@ Implemented so far:
    - Added “Highlight recent changes” option in Obligation Graph page using `/admin/deltas` changed regulation IDs to visually outline impacted nodes.
    - Enhanced GST Filing page with a visible checklist from `missing_items`.
    - Enhanced HITL page with a Review modal showing full Rail A/Rail B payloads and divergence reason.
-   - Updated CAAL signing to use the entry timestamp so hashes are verifiable client-side.
-   - Updated Audit Trail page “Verify Hash” to recompute SHA-256 in the browser and compare to stored `action_hash`.
+299. Updated CAAL signing to use the entry timestamp so hashes are verifiable client-side.
+300. Updated Audit Trail page “Verify Hash” to recompute SHA-256 in the browser and compare to stored `action_hash`.
 
 Validation:
 - `npm run lint` passes in `apps/web`.
@@ -328,6 +328,25 @@ Implemented:
    - Added `vercel.json` and `package.json` configurations to all 4 mock portals to enable 1-click deployments.
    - Wrote `setup.sh` to scaffold the entire project from scratch and run seeds.
    - Generated the central `README.md` containing architectural overviews and the demo execution path.
+
+### Task: PHASE 7 - Live Scraping Migration & Bug Fixes
+**Status:** Completed  
+**Date:** 2026-05-09
+
+Implemented:
+1. Live Portal Scraping Migration:
+   - Generated realistic JSON compliance payloads for all 4 mock portals (GSTN, EPFO, FSSAI, PT-States) to simulate live environments.
+   - User successfully deployed the local static sites from `apps/mock-portals` to Vercel:
+     - EPFO: `https://epfo-eight.vercel.app/`
+     - FSSAI: `https://fssai-three.vercel.app/`
+     - GSTN: `https://gstn-taupe.vercel.app/`
+     - PT-States: `https://pt-states.vercel.app/`
+   - Updated the backend environment (`.env`) and `config.py` to point `MOCK_*_URL`s to the live Vercel deployments instead of local fallbacks.
+   - Restarted `api` and `scheduler` Docker containers. The `RegulationWatcher` now polls these real external URLs every 2 minutes for compliance scraping.
+2. Frontend Architecture Fixes:
+   - **WebSockets**: Removed hardcoded `ws://localhost:8000` URLs across `page.tsx`, `layout.tsx`, and `compliance-feed/page.tsx` and wired them to `NEXT_PUBLIC_WS_URL`.
+   - **React Rendering Error**: Fixed a DOM validation error ("1 error" toast) in the Delta History table caused by invalid `<tbody>` nesting by utilizing `<Fragment>`.
+   - **Duplicate API Calls**: Added a loading/disabling state (`isTriggering`) to the "Push Change" button on the Compliance Feed to prevent duplicate scenario triggers.
 
 ## How To Use This Memory File
 

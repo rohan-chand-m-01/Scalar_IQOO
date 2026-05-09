@@ -62,5 +62,12 @@ class RegulationVectorStore:
         if self.collection.count() > 0:
             return
         corpus_path = Path(__file__).parent / "regulation_corpus" / "regulations.json"
-        documents = json.loads(corpus_path.read_text(encoding="utf-8"))
-        self.upsert_documents(documents)
+        if not corpus_path.exists():
+            print("WARNING: regulation corpus file not found, skipping bootstrap.")
+            return
+        try:
+            documents = json.loads(corpus_path.read_text(encoding="utf-8"))
+            self.upsert_documents(documents)
+        except Exception as e:
+            print(f"WARNING: Vector store bootstrap failed (embedding API may be unavailable): {e}")
+            print("The system will continue without pre-embedded regulations.")

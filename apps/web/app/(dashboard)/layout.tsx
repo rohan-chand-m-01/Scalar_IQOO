@@ -61,7 +61,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { getToken } = useAuth();
   const pathname = usePathname();
   const api = useMemo(() => createApiClient({ getToken }), [getToken]);
-  const ws = useWebSocket({ url: "ws://localhost:8000/ws/retrigger" });
+  const ws = useWebSocket({ url: process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8001/ws/retrigger" });
 
   const [badges, setBadges] = useState<{ alerts: number; hitl: number }>({ alerts: 0, hitl: 0 });
   const [lastToastEvent, setLastToastEvent] = useState<string | null>(null);

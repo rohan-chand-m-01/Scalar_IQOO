@@ -23,15 +23,16 @@ from middleware.clerk_auth import clerk_auth_middleware
 from services.knowledge.obligation_graph.graph_builder import ObligationGraphBuilder
 from services.knowledge.rag.vector_store import RegulationVectorStore
 from services.knowledge.rule_engine import RuleEngine
-from scheduler.polling_jobs import SchedulerJobs
+from services.scheduler.polling_jobs import SchedulerJobs
 from sqlalchemy import select
 from pathlib import Path
 import subprocess
 import sys
+import os
 
 app = FastAPI(title="RegGraph AI API", version="0.1.0")
-app.add_middleware(BaseHTTPMiddleware, dispatch=clerk_auth_middleware)
 
+# CORS middleware must be added first (outermost layer)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,6 +40,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Auth middleware added after CORS (innermost layer, processed first for non-preflight requests)
+app.add_middleware(BaseHTTPMiddleware, dispatch=clerk_auth_middleware)
 
 
 @app.on_event("startup")
@@ -49,9 +53,20 @@ async def startup_event() -> None:
     graph_builder = ObligationGraphBuilder()
     graph_builder.build_graph()
     app.state.obligation_graph = graph_builder.graph
+    app.state.graph_builder = graph_builder
     
-    persist_dir = Path(__file__).resolve().parent.parent / "chroma_db"
-    vector_store = RegulationVectorStore(str(persist_dir))
+    # Resolve chroma_db path relative to repo root (works in Docker with PYTHONPATH=/app)
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    persist_dir = repo_root / "chroma_db"
+    persist_dir.mkdir(exist_ok=True)
+    
+    vector_store = None
+    try:
+        vector_store = RegulationVectorStore(str(persist_dir))
+        app.state.vector_store = vector_store
+    except Exception as e:
+        print(f"WARNING: Vector store initialization failed: {e}")
+        app.state.vector_store = None
     
     rule_engine = RuleEngine()
     app.state.rule_engine = rule_engine
@@ -62,17 +77,27 @@ async def startup_event() -> None:
     scheduler_jobs.start()
     app.state.scheduler = scheduler_jobs
 
+    # Auto-seed database if empty
+    business_count = 0
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Business))
         businesses = result.scalars().all()
+        business_count = len(businesses)
         if not businesses:
-            seed_script = Path(__file__).resolve().parent.parent.parent / "data" / "seed" / "seed_db.py"
+            seed_script = repo_root / "data" / "seed" / "seed_db.py"
             if seed_script.exists():
-                subprocess.run([sys.executable, str(seed_script)], check=False)
-                result = await session.execute(select(Business))
-                businesses = result.scalars().all()
+                env = os.environ.copy()
+                env.setdefault("SYNC_DATABASE_URL", env.get("DATABASE_URL", ""))
+                try:
+                    subprocess.run([sys.executable, str(seed_script)], check=False, env=env)
+                    result = await session.execute(select(Business))
+                    businesses = result.scalars().all()
+                    business_count = len(businesses)
+                except Exception as e:
+                    print(f"WARNING: Seed script failed: {e}")
 
-    print(f"RGAI Backend initialized. Graph nodes: {graph_builder.graph.number_of_nodes()}. Regulations embedded: {vector_store.collection.count()}. Businesses: {len(businesses)}.")
+    reg_count = vector_store.collection.count() if vector_store else 0
+    print(f"RGAI Backend initialized. Graph nodes: {graph_builder.graph.number_of_nodes()}. Regulations embedded: {reg_count}. Businesses: {business_count}.")
 
 
 app.include_router(compliance_router)

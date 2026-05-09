@@ -40,9 +40,10 @@ async def run_scenario(scenario_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/reset")
 async def reset_demo(db: AsyncSession = Depends(get_db)):
-    import redis
+    import redis as _redis
+    from config import settings
     try:
-        r = redis.Redis(host="localhost", port=6379, db=0)
+        r = _redis.from_url(settings.redis_url)
         keys = r.keys("portal_override:*")
         if keys:
             r.delete(*keys)
