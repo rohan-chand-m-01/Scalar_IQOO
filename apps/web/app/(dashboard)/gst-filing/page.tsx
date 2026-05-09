@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createApiClient } from "@/lib/api-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ConfidenceScore } from "@/components/compliance/ConfidenceScore";
 import { DualRailBadge } from "@/components/compliance/DualRailBadge";
 import { CheckCircle2, XCircle, Download } from "lucide-react";
 
@@ -159,16 +158,7 @@ export default function GSTFilingPage() {
       </Card>
 
       {/* ─── Readiness + Summary + Calendar ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="glass border-white/[0.06] p-5">
-          <div className="text-[10px] font-mono text-white/30 tracking-widest uppercase">Filing Readiness Score</div>
-          <div className="mt-4 flex justify-center">
-            <ConfidenceScore score={readiness / 100} size="lg" />
-          </div>
-          <div className="mt-3 text-center text-[11px] font-mono text-white/25">
-            {readiness >= 80 ? "Ready to file" : readiness >= 50 ? "Needs attention" : "Not ready"}
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         <Card className="glass border-white/[0.06] p-5">
           <div className="text-[10px] font-mono text-white/30 tracking-widest uppercase">Filing Summary</div>
