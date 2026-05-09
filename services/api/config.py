@@ -13,10 +13,10 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./chroma_db"
     embedding_model: str = "models/text-embedding-004"
 
-    mock_gstn_url: str = "https://gstn-taupe.vercel.app/regulations.json"
-    mock_epfo_url: str = "https://epfo-eight.vercel.app/regulations.json"
-    mock_fssai_url: str = "https://fssai-three.vercel.app/regulations.json"
-    mock_pt_url: str = "https://pt-states.vercel.app/regulations.json"
+    mock_gstn_url: str = "https://gstn-xi.vercel.app/"
+    mock_epfo_url: str = "https://epfo-coral.vercel.app/"
+    mock_fssai_url: str = "https://fssai-nine.vercel.app/"
+    mock_pt_url: str = "https://state-pt.vercel.app/"
 
     api_base_url: str = "http://localhost:8000"
     clerk_secret_key: str = ""

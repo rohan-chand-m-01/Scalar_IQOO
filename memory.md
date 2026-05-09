@@ -348,6 +348,78 @@ Implemented:
    - **React Rendering Error**: Fixed a DOM validation error ("1 error" toast) in the Delta History table caused by invalid `<tbody>` nesting by utilizing `<Fragment>`.
    - **Duplicate API Calls**: Added a loading/disabling state (`isTriggering`) to the "Push Change" button on the Compliance Feed to prevent duplicate scenario triggers.
 
+### Task: PHASE 8 - AI Assistant Connection & Optimization
+**Status:** Completed  
+**Date:** 2026-05-09
+
+Implemented:
+1. LLM Core Connection:
+   - Wired the `/assistant/chat` endpoint to the actual `GeminiComplianceClient` and `RegulationVectorStore`.
+   - Replaced mocked echo-back response with a real RAG (Retrieval-Augmented Generation) pipeline.
+   - Connected the chat payload's `business_id` to the database to fetch accurate business profiles for personalized compliance context.
+2. Performance & Reliability Fixes:
+   - **Async to Thread**: Wrapped blocking synchronous LLM and database calls in `asyncio.to_thread` within the `rag_chat` endpoint. This prevents the FastAPI event loop from hanging and ensures the UI doesn't "load forever."
+   - **Manual Embeddings**: Modified the `retrieve_relevant_regulations` function to manually embed queries using the Gemini `text-embedding-004` model before querying ChromaDB. This bypasses potential internal library hangs and ensures embedding consistency between storage and retrieval.
+
+### Task: PHASE 9 - IRDA Live Scraping Migration
+**Status:** Completed  
+**Date:** 2026-05-09
+
+Implemented:
+1. **RegulationWatcher rewrite** (`services/agents/irda/watcher.py`):
+   - `fetch_portal_data()` now ALWAYS hits the live Vercel URL by default.
+   - Redis demo-override path gated behind `allow_demo_override=True` flag — only the `/admin/demo/trigger-change` endpoint passes this.
+   - Added 3-attempt retry with exponential backoff (2s, 4s) for resilient HTTP scraping.
+   - Added structured `logging` (portal name, URL, status code, latency, attempt number).
+   - Added response validation (checks for `regulations` key before hashing).
+   - Removed local-file fallback entirely — if HTTP fails after retries, returns error marker and skips.
+   - Added `_last_poll_results` tracking dict exposed via `get_last_poll_results()` for admin dashboard.
+   - Hash computation now strips internal `_`-prefixed keys to avoid hashing error markers.
+
+2. **IRDAOrchestrator enhancements** (`services/agents/irda/orchestrator.py`):
+   - `run_cycle()` accepts `allow_demo_override` kwarg, passes through to watcher.
+   - Per-portal try/catch — if one portal's delta processing fails, others continue.
+   - Added per-portal timing metrics (`processing_ms`) in result payload.
+   - Sets `delta.processed = True` after successful processing.
+   - Returns enriched result dict with `cycle_duration_ms`, `portal_details`, and `poll_statuses`.
+
+3. **Admin router migration** (`services/api/routers/admin.py`):
+   - `GET /admin/portal-status` — Now reads from `regulation_snapshots` table (actual scrape results) instead of local files. Shows real `fetched_at` timestamps, `content_hash`, `changes_24h` count, and `status` (live/awaiting_first_scrape).
+   - `GET /admin/portal/{portal_name}` — Fetches live from Vercel URL first, falls back to latest DB snapshot, then local file as last resort.
+   - `POST /admin/demo/trigger-change` — Now passes `allow_demo_override=True` to the IRDA cycle so only demo triggers use Redis; scheduled polls always hit Vercel.
+   - Added `GET /admin/scraping-health` — Returns `last_poll_at`, `poll_interval_seconds`, `next_poll_at` from the scheduler for the live status indicator.
+
+4. **Scheduler optimization** (`services/scheduler/polling_jobs.py`):
+   - Reduced polling interval from 120s → 30s for more responsive change detection.
+   - `poll_portals()` explicitly passes `allow_demo_override=False` so scheduled polls always hit live Vercel URLs.
+   - Added portal-unreachable WebSocket alerts — broadcasts `portal_unreachable` event when a portal fails all retry attempts.
+   - Added `get_poll_status()` method returning last poll time, result, and computed next poll time for the admin dashboard.
+   - Portals are polled sequentially with 2s stagger to avoid thundering herd.
+
+5. **Frontend Compliance Feed** (`apps/web/app/(dashboard)/compliance-feed/page.tsx`):
+   - Added "Live Scraping Active" health bar with pulsing green dot, last scrape timestamp, and countdown to next scrape.
+   - Portal status cards now display DB-sourced data: `status` (live/awaiting), `scraped` time, `changes_24h` badge.
+   - Added portal-unreachable alert banner via WebSocket `portal_unreachable` event.
+   - Auto-refreshes delta history + portal statuses every 30s.
+   - Empty state message updated to indicate active scraping instead of "use trigger button".
+   - Added portal label mapping for cleaner display names (pt_states → PT States).
+
+Design Decision:
+- Redis override is preserved for demo purposes ONLY (via the `allow_demo_override` flag). All automated/scheduled polling hits the real Vercel URLs, ensuring the system detects genuine changes autonomously.
+
+### Task: PHASE 10 - External Mock Portal URLs Updated
+**Status:** Completed  
+**Date:** 2026-05-09
+
+Implemented:
+1. **Updated Environment Configuration (`.env` and `services/api/config.py`)**:
+   - Replaced internal demo URLs with user-provided external deployments managed independently.
+   - `MOCK_GSTN_URL` updated to `https://gstn-xi.vercel.app/`
+   - `MOCK_EPFO_URL` updated to `https://epfo-coral.vercel.app/`
+   - `MOCK_FSSAI_URL` updated to `https://fssai-nine.vercel.app/`
+   - `MOCK_PT_URL` updated to `https://state-pt.vercel.app/`
+   - Verified that the IRDA Watcher can fetch the HTML from these URLs and extract the embedded JSON regulations via regex correctly.
+
 ## How To Use This Memory File
 
 - Append a new section under **Implementation Log** after each task.

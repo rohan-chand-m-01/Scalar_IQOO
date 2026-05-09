@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useAuth } from "@clerk/nextjs";
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useState, Fragment, useCallback } from "react";
 import { createApiClient } from "@/lib/api-client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,10 +24,28 @@ type DeltaRow = {
   skipped_businesses?: Array<{ id: string; name: string | null }>;
 };
 
+type PortalStatus = {
+  portal: string;
+  url: string;
+  last_checked: string | null;
+  last_hash: string | null;
+  change_detected: boolean;
+  regulations_monitored: number;
+  changes_24h: number;
+  status: string;
+};
+
+type ScrapingHealth = {
+  last_poll_at: string | null;
+  poll_interval_seconds: number;
+  next_poll_at: string | null;
+};
+
 const PORTAL_COLORS: Record<string, string> = {
   gstn: "from-green-500/10 to-green-500/[0.02] border-green-500/15",
   epfo: "from-blue-500/10 to-blue-500/[0.02] border-blue-500/15",
   fssai: "from-orange-500/10 to-orange-500/[0.02] border-orange-500/15",
+  pt_states: "from-purple-500/10 to-purple-500/[0.02] border-purple-500/15",
   "pt-states": "from-purple-500/10 to-purple-500/[0.02] border-purple-500/15",
 };
 
@@ -35,7 +53,16 @@ const PORTAL_DOT: Record<string, string> = {
   gstn: "bg-green-400",
   epfo: "bg-blue-400",
   fssai: "bg-orange-400",
+  pt_states: "bg-purple-400",
   "pt-states": "bg-purple-400",
+};
+
+const PORTAL_LABELS: Record<string, string> = {
+  gstn: "GSTN",
+  epfo: "EPFO",
+  fssai: "FSSAI",
+  pt_states: "PT States",
+  "pt-states": "PT States",
 };
 
 export default function ComplianceFeedPage() {
@@ -50,27 +77,38 @@ export default function ComplianceFeedPage() {
   const [regulationId, setRegulationId] = useState<string>("GST_LATE_FEE_001");
   const [field, setField] = useState<"value" | "title" | "description">("value");
   const [newValue, setNewValue] = useState<string>("250");
-  const [portalStatuses, setPortalStatuses] = useState<any[]>([]);
+  const [portalStatuses, setPortalStatuses] = useState<PortalStatus[]>([]);
   const [portalRegs, setPortalRegs] = useState<any[]>([]);
   const [isTriggering, setIsTriggering] = useState(false);
+  const [scrapingHealth, setScrapingHealth] = useState<ScrapingHealth | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const rows = await api.get<any>("/admin/deltas");
       setDeltas(rows ?? []);
     } catch {
       setDeltas([]);
     }
-  };
+  }, [api]);
 
-  const loadStatuses = async () => {
+  const loadStatuses = useCallback(async () => {
     try {
-      const rows = await api.get<any[]>("/admin/portal-status");
+      const rows = await api.get<PortalStatus[]>("/admin/portal-status");
       setPortalStatuses(rows ?? []);
     } catch {
       setPortalStatuses([]);
     }
-  };
+  }, [api]);
+
+  const loadScrapingHealth = useCallback(async () => {
+    try {
+      const data = await api.get<ScrapingHealth>("/admin/scraping-health");
+      setScrapingHealth(data);
+    } catch {
+      setScrapingHealth(null);
+    }
+  }, [api]);
 
   const loadPortalRegs = async (p: string) => {
     try {
@@ -86,9 +124,36 @@ export default function ComplianceFeedPage() {
   useEffect(() => {
     load();
     loadStatuses();
+    loadScrapingHealth();
     loadPortalRegs(portal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-refresh every 30s to catch new changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      load();
+      loadStatuses();
+      loadScrapingHealth();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [load, loadStatuses, loadScrapingHealth]);
+
+  // Countdown timer to next scrape
+  useEffect(() => {
+    if (!scrapingHealth?.next_poll_at) {
+      setCountdown(null);
+      return;
+    }
+    const tick = () => {
+      const nextPoll = new Date(scrapingHealth.next_poll_at!).getTime();
+      const remaining = Math.max(0, Math.round((nextPoll - Date.now()) / 1000));
+      setCountdown(remaining);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [scrapingHealth?.next_poll_at]);
 
   useEffect(() => {
     loadPortalRegs(portal);
@@ -99,6 +164,7 @@ export default function ComplianceFeedPage() {
     if (ws.lastEvent?.event === "regulation_change") {
       load();
       loadStatuses();
+      loadScrapingHealth();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws.lastEvent]);
@@ -130,23 +196,97 @@ export default function ComplianceFeedPage() {
         } as any)
       : null;
 
+  const portalUnreachable =
+    ws.lastEvent?.event === "portal_unreachable" ? ws.lastEvent : null;
+
   return (
     <div className="space-y-5">
       <RetriggerBanner event={bannerEvent} />
+
+      {/* Portal Unreachable Alert */}
+      {portalUnreachable && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/[0.06] px-4 py-3 animate-fade-in-up">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-sm font-medium text-red-300">
+              Portal Unreachable: {PORTAL_LABELS[portalUnreachable.portal] ?? portalUnreachable.portal}
+            </span>
+          </div>
+          <div className="mt-1 text-[11px] font-mono text-red-300/60">
+            {portalUnreachable.error}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Live Scraping Health Bar ─── */}
+      <Card className="glass border-white/[0.06] p-4 animate-fade-in-up">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold">Live Scraping Active</div>
+              <div className="text-[10px] font-mono text-white/30">
+                IRDA agent polling {portalStatuses.length} portals every 30s
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            {scrapingHealth?.last_poll_at && (
+              <div className="text-right">
+                <div className="text-[10px] font-mono text-white/30">Last scrape</div>
+                <div className="text-[11px] font-mono text-white/50">
+                  {new Date(scrapingHealth.last_poll_at).toLocaleTimeString()}
+                </div>
+              </div>
+            )}
+            {countdown !== null && (
+              <div className="text-right">
+                <div className="text-[10px] font-mono text-white/30">Next in</div>
+                <div className="text-sm font-mono font-semibold text-emerald-400">{countdown}s</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
 
       {/* ─── Portal Status Cards ─── */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-fade-in-up">
         {(portalStatuses ?? []).map((p) => {
           const portalKey = p.portal?.toLowerCase?.() ?? "";
+          const isLive = p.status === "live";
+          const isAwaiting = p.status === "awaiting_first_scrape";
           return (
             <Card key={p.portal} className={`border bg-gradient-to-br p-4 ${PORTAL_COLORS[portalKey] ?? "border-white/[0.06] from-white/[0.03] to-transparent"}`}>
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">{p.portal}</div>
-                <span className={`h-2 w-2 rounded-full ${p.change_detected ? PORTAL_DOT[portalKey] ?? "bg-emerald-400" : "bg-white/15"} ${p.change_detected ? "animate-dot-pulse" : ""}`} />
+                <div className="text-sm font-semibold">{PORTAL_LABELS[portalKey] ?? portalKey}</div>
+                <div className="flex items-center gap-1.5">
+                  {p.changes_24h > 0 && (
+                    <Badge className="bg-amber-500/15 border-amber-500/20 text-amber-300 text-[9px] px-1.5">
+                      {p.changes_24h} Δ
+                    </Badge>
+                  )}
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      isLive
+                        ? p.change_detected
+                          ? `${PORTAL_DOT[portalKey] ?? "bg-emerald-400"} animate-dot-pulse`
+                          : "bg-emerald-500/50"
+                        : isAwaiting
+                        ? "bg-amber-400 animate-pulse"
+                        : "bg-white/15"
+                    }`}
+                  />
+                </div>
               </div>
               <div className="mt-3 space-y-1">
                 <div className="text-[10px] font-mono text-white/30">
-                  checked: {p.last_checked ? new Date(p.last_checked).toLocaleTimeString() : "—"}
+                  status: <span className={isLive ? "text-emerald-400/70" : "text-amber-400/70"}>{p.status}</span>
+                </div>
+                <div className="text-[10px] font-mono text-white/30">
+                  scraped: {p.last_checked ? new Date(p.last_checked).toLocaleTimeString() : "never"}
                 </div>
                 <div className="text-[10px] font-mono text-white/30">
                   hash: {p.last_hash ? String(p.last_hash).slice(0, 14) + "…" : "—"}
@@ -164,8 +304,8 @@ export default function ComplianceFeedPage() {
       <Card className="glass border-white/[0.06] p-5 animate-fade-in-up stagger-1">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold">Regulation Watcher Status</div>
-            <div className="mt-0.5 text-[11px] font-mono text-white/30">IRDA live monitoring — demo controls</div>
+            <div className="text-sm font-semibold">Regulation Watcher Controls</div>
+            <div className="mt-0.5 text-[11px] font-mono text-white/30">IRDA live monitoring — demo override trigger</div>
           </div>
 
           <Dialog open={open} onOpenChange={setOpen}>
@@ -245,7 +385,7 @@ export default function ComplianceFeedPage() {
       {/* ─── Delta History ─── */}
       <Card className="glass border-white/[0.06] p-5 animate-fade-in-up stagger-2">
         <div className="text-sm font-semibold">Delta History</div>
-        <div className="mt-0.5 text-[11px] font-mono text-white/30">Regulation snapshots with before/after comparison</div>
+        <div className="mt-0.5 text-[11px] font-mono text-white/30">Regulation snapshots with before/after comparison — auto-refreshes every 30s</div>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-[10px] font-mono text-white/30 tracking-wider uppercase">
@@ -264,7 +404,7 @@ export default function ComplianceFeedPage() {
                     <td className="py-3 pr-4">
                       <span className={`inline-flex items-center gap-1.5 font-mono text-xs`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${PORTAL_DOT[d.portal_name] ?? "bg-white/30"}`} />
-                        {d.portal_name}
+                        {PORTAL_LABELS[d.portal_name] ?? d.portal_name}
                       </span>
                     </td>
                     <td className="pr-4 font-mono text-[11px] text-white/40">
@@ -359,7 +499,7 @@ export default function ComplianceFeedPage() {
               {deltas.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-8 text-sm text-white/30 text-center">
-                    No deltas yet — use the trigger button above to simulate a regulation change.
+                    No deltas yet — the IRDA agent is actively scraping portals every 30s. Changes will appear here automatically.
                   </td>
                 </tr>
               )}

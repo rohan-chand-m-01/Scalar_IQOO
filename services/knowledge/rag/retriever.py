@@ -15,10 +15,29 @@ def retrieve_relevant_regulations(
 ) -> list[dict]:
     store = RegulationVectorStore(persist_dir=persist_dir)
     domains = _domain_filters_from_profile(business_profile)
+    
+    # Manually embed the query to avoid potential hangs in Chroma's automatic embedding handling
+    query_vector = store.embedder.embed_text(query)
+    
     per_domain = max(1, n_results // max(1, len(domains)))
     docs: list[dict] = []
     for domain in domains:
-        docs.extend(store.similarity_search(query=query, n_results=per_domain, domain_filter=domain))
+        # Use query_embeddings instead of query_texts
+        result = store.collection.query(query_embeddings=[query_vector], n_results=per_domain, where={"domain": domain})
+        
+        ids = result.get("ids", [[]])[0]
+        documents = result.get("documents", [[]])[0]
+        metas = result.get("metadatas", [[]])[0]
+        dists = result.get("distances", [[]])[0]
+        
+        for i, doc_id in enumerate(ids):
+            docs.append({
+                "id": doc_id,
+                "content": documents[i],
+                "metadata": metas[i],
+                "distance": dists[i] if i < len(dists) else None,
+            })
+            
     docs = sorted(docs, key=lambda d: d.get("distance") or 9999)
     return docs[:n_results]
 
