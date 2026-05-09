@@ -11,11 +11,22 @@ COLLECTION_NAME = "rgai_regulations"
 
 
 class RegulationVectorStore:
+    _instance = None
+
+    def __new__(cls, persist_dir: str):
+        if cls._instance is None:
+            cls._instance = super(RegulationVectorStore, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self, persist_dir: str) -> None:
+        if self._initialized:
+            return
         self.client = self.initialize_store(persist_dir)
         self.collection = self.client.get_or_create_collection(COLLECTION_NAME)
         self.embedder = Embedder()
         self._bootstrap_if_empty()
+        self._initialized = True
 
     def initialize_store(self, persist_dir: str):
         return chromadb.PersistentClient(path=persist_dir)

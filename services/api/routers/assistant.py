@@ -5,57 +5,46 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, Business
 from models import ChatMessage, ChatResponse
-from services.knowledge.rag.gemini_client import GeminiComplianceClient, SYSTEM_PROMPT
-from services.knowledge.rag.retriever import retrieve_relevant_regulations, build_context_prompt
+from services.agents.drca.comparator import DRCAComparator
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 @router.post("/chat", response_model=ChatResponse)
 async def rag_chat(payload: ChatMessage, db: AsyncSession = Depends(get_db)):
+    drca_comparator = DRCAComparator()
     # 1. Load Business Context
     business = await db.scalar(select(Business).where(Business.id == payload.business_id))
-    business_profile = business.__dict__ if business else {}
+    raw = {k: v for k, v in (business.__dict__ if business else {}).items() if not k.startswith("_")}
+    # Make JSON-safe for CAAL ledger storage (UUID, datetime, Decimal → str)
+    business_profile = {}
+    for k, v in raw.items():
+        if hasattr(v, "hex"):  # UUID
+            business_profile[k] = str(v)
+        elif hasattr(v, "isoformat"):  # datetime
+            business_profile[k] = v.isoformat()
+        elif isinstance(v, (int, float, bool, str, type(None))):
+            business_profile[k] = v
+        else:
+            business_profile[k] = str(v)
 
-    # 2. Retrieve Relevant Regulations via Chroma RAG (Run in thread to avoid blocking)
-    retrieved_docs = await asyncio.to_thread(
-        retrieve_relevant_regulations,
-        payload.message, 
-        business_profile, 
-        5
+    # 2. Run the Dual-Rail Compliance Architecture
+    drca_result = await drca_comparator.run_full_drca(
+        query=payload.message,
+        business_profile=business_profile,
+        portal_data={},
+        db_session=db
     )
     
-    # 3. Build Context Prompt
-    context = build_context_prompt(payload.message, retrieved_docs, business_profile)
-
-    # 4. Generate Gemini Response (Run in thread to avoid blocking)
-    client = GeminiComplianceClient()
-    llm_result = await asyncio.to_thread(
-        client.generate_compliance_response,
-        SYSTEM_PROMPT, 
-        payload.message, 
-        context
-    )
-    
-    # 5. Determine sources and confidence heuristically for demo
-    sources = list(set([doc.get("metadata", {}).get("domain", "general") for doc in retrieved_docs]))
-    if not sources:
-        sources = ["general_knowledge"]
-        
-    text = payload.message.lower()
-    confidence = 0.92
-    hitl_escalated = False
-    rail_agreement = True
-
-    if "uncertain" in text or "override" in text:
-        confidence = 0.54
-        hitl_escalated = True
-        rail_agreement = False
+    # 3. Format Response
+    # If HITL was required, sources can indicate the queue
+    sources = ["drca_rail_a"]
+    if drca_result.get("hitl_required"):
         sources.append("hitl_queue")
 
     return ChatResponse(
-        response=llm_result["response"],
-        confidence_score=confidence,
+        response=drca_result.get("final_response", ""),
+        confidence_score=drca_result.get("confidence_score", 0.0),
         sources=sources,
-        rail_agreement=rail_agreement,
-        hitl_escalated=hitl_escalated,
+        rail_agreement=drca_result.get("rail_agreement", False),
+        hitl_escalated=drca_result.get("hitl_required", False),
     )

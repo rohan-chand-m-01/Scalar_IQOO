@@ -13,12 +13,15 @@ from services.api.database import Business, RegulationSnapshot
 logger = logging.getLogger("irda.orchestrator")
 
 
+from services.agents.coce.cascade_engine import CascadeEngine
+
 class IRDAOrchestrator:
     def __init__(self) -> None:
         self.watcher = RegulationWatcher()
         self.extractor = DeltaExtractor()
         self.notifier = DeltaNotifier()
         self.ledger = LedgerWriter()
+        self.cascade = CascadeEngine()
 
     async def run_cycle(
         self, db_session, graph_builder, ws_manager, *, allow_demo_override: bool = False
@@ -75,6 +78,11 @@ class IRDAOrchestrator:
                     affected, summary, str(delta.id), db_session
                 )
                 total_notified += created
+
+                # Cascade to obligations
+                if changed_ids:
+                    cascade_result = await self.cascade.evaluate_regulation_change_cascade(changed_ids, all_businesses, db_session)
+                    logger.info("Cascade complete for delta %s: %d obligations created/updated.", str(delta.id), cascade_result.get("created", 0) + cascade_result.get("updated", 0))
 
                 delta.changed_regulation_ids = changed_ids
                 delta.delta_summary = summary

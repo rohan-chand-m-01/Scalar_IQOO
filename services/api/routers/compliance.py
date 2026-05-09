@@ -108,20 +108,21 @@ async def compliance_health_score(business_id: UUID, db: AsyncSession = Depends(
 
 @router.get("/cascade-preview/{business_id}")
 async def cascade_preview(business_id: UUID, db: AsyncSession = Depends(get_db)):
+    from services.knowledge.obligation_graph.graph_builder import ObligationGraphBuilder
     business = await db.get(Business, business_id)
     if not business:
         raise HTTPException(status_code=404, detail="Business not found")
 
-    applicable = []
-    if business.gst_registered:
-        applicable.extend(["GST_LATE_FEE_001", "GST_DUE_DATE_001", "GST_SLAB_001"])
-    if business.pf_registered:
-        applicable.extend(["PF_WAGE_CEILING_001", "PF_EMPLOYER_RATE_001", "PF_ECR_DUE_DATE_001"])
-    if business.esi_registered:
-        applicable.append("ESI_THRESHOLD_001")
-    if business.fssai_registered or business.business_type == "food_business":
-        applicable.extend(["FSSAI_RENEWAL_PERIOD_001", "FSSAI_ANNUAL_RETURN_001"])
-    if business.pt_state:
-        applicable.extend(["PT_MH_SLAB_001", "PT_MH_SLAB_002", "PT_KA_SLAB_001", "PT_WB_SLAB_001"])
+    graph_builder = ObligationGraphBuilder()
+    graph_builder.build_graph()
+    profile = business.__dict__
+    applicable_nodes = graph_builder.get_applicable_obligations(profile)
 
-    return {"business_id": str(business_id), "applies_to": sorted(set(applicable))}
+    return {
+        "business_id": str(business_id),
+        "applies_to": sorted(set(n.regulation_id for n in applicable_nodes)),
+        "details": [
+            {"regulation_id": n.regulation_id, "title": n.title, "domain": n.domain}
+            for n in applicable_nodes
+        ],
+    }

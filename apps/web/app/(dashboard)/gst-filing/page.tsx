@@ -12,15 +12,11 @@ import { CheckCircle2, XCircle, Download } from "lucide-react";
 
 type Business = { id: string; name: string; gst_registered?: boolean };
 
-function MiniCalendar() {
+function MiniCalendar({ dueDates = [] }: { dueDates: { date: number; title: string; type: string }[] }) {
   const now = new Date();
   const month = now.toLocaleString("default", { month: "long" });
   const year = now.getFullYear();
   const daysInMonth = new Date(year, now.getMonth() + 1, 0).getDate();
-
-  const gstDates = [20]; // GSTR-3B
-  const gstr1Date = [11]; // GSTR-1
-  const annualDate = now.getMonth() === 11 ? [31] : []; // GSTR-9
 
   return (
     <div>
@@ -34,16 +30,16 @@ function MiniCalendar() {
         ))}
         {Array.from({ length: daysInMonth }, (_, i) => {
           const day = i + 1;
-          const isGst = gstDates.includes(day);
-          const isGstr1 = gstr1Date.includes(day);
-          const isAnnual = annualDate.includes(day);
           const isToday = day === now.getDate();
           const daysUntil = day - now.getDate();
           const isUpcoming = daysUntil > 0 && daysUntil <= 7;
           const isPast = day < now.getDate();
 
+          // Check if this day is a due date
+          const dueItem = dueDates.find((d) => d.date === day);
+
           let bg = "";
-          if (isGst || isGstr1 || isAnnual) {
+          if (dueItem) {
             if (isPast) bg = "bg-red-500/30 text-red-300";
             else if (isUpcoming) bg = "bg-amber-500/30 text-amber-300";
             else bg = "bg-emerald-500/20 text-emerald-300";
@@ -53,7 +49,7 @@ function MiniCalendar() {
             <div
               key={day}
               className={`text-[10px] font-mono text-center py-0.5 rounded ${bg} ${isToday ? "ring-1 ring-blue-400/50" : ""} ${!bg ? "text-white/30" : ""}`}
-              title={isGst ? "GSTR-3B Due" : isGstr1 ? "GSTR-1 Due" : isAnnual ? "GSTR-9 Due" : ""}
+              title={dueItem ? dueItem.title : ""}
             >
               {day}
             </div>
@@ -80,6 +76,7 @@ export default function GSTFilingPage() {
   });
   const [status, setStatus] = useState<any>(null);
   const [exportJson, setExportJson] = useState<string>("");
+  const [calendarDates, setCalendarDates] = useState<any[]>([]);
 
   useEffect(() => {
     api.get<Business[]>("/admin/users").then((rows) => {
@@ -92,6 +89,17 @@ export default function GSTFilingPage() {
   useEffect(() => {
     if (!selected) return;
     api.post(`/gst/filing-status/${selected}/compute`).then(setStatus);
+    api.get<any[]>("/gst/due-dates").then((dates) => {
+      // Filter dates for this business and extract the day of the month
+      const businessDates = dates
+        .filter((d) => d.business_id === selected && d.due_date)
+        .map((d) => ({
+          date: parseInt(d.due_date.split("-")[2], 10),
+          title: d.title,
+          type: "obligation",
+        }));
+      setCalendarDates(businessDates);
+    });
   }, [api, selected]);
 
   const doExport = async () => {
@@ -179,14 +187,14 @@ export default function GSTFilingPage() {
             </div>
           </div>
           <div className="mt-4">
-            <DualRailBadge railAgreement={true} confidence={0.96} hitlRequired={false} />
+            <DualRailBadge railAgreement={true} confidence={readiness / 100} hitlRequired={readiness < 80} />
           </div>
         </Card>
 
         <Card className="glass border-white/[0.06] p-5">
           <div className="text-[10px] font-mono text-white/30 tracking-widest uppercase">Due Dates Calendar</div>
           <div className="mt-4">
-            <MiniCalendar />
+            <MiniCalendar dueDates={calendarDates} />
           </div>
         </Card>
       </div>
@@ -195,25 +203,28 @@ export default function GSTFilingPage() {
       <Card className="glass border-white/[0.06] p-5">
         <div className="text-[10px] font-mono text-white/30 tracking-widest uppercase">Filing Checklist</div>
         <div className="mt-4 space-y-2">
-          {["GST Registration Valid", "GSTR-1 Filed", "Reconciliation Done", "ITC Claimed", "Payment Ready"].map((item) => {
-            const isMissing = (status?.missing_items ?? []).some((m: string) => m.toLowerCase().includes(item.toLowerCase().split(" ")[0].toLowerCase()));
-            return (
-              <div key={item} className={`flex items-center gap-3 rounded-lg border p-3 ${isMissing ? "border-amber-500/15 bg-amber-500/[0.03]" : "border-emerald-500/15 bg-emerald-500/[0.03]"}`}>
-                {isMissing ? (
-                  <XCircle className="h-4 w-4 text-amber-400 shrink-0" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                )}
-                <span className="text-sm text-white/70">{item}</span>
-              </div>
-            );
-          })}
-          {(status?.missing_items ?? []).filter((m: string) => !["gst", "gstr", "reconciliation", "itc", "payment"].some((k) => m.toLowerCase().includes(k))).map((m: string, idx: number) => (
-            <div key={idx} className="flex items-center gap-3 rounded-lg border border-amber-500/15 bg-amber-500/[0.03] p-3">
-              <XCircle className="h-4 w-4 text-amber-400 shrink-0" />
-              <span className="text-sm text-white/70">{m}</span>
-            </div>
-          ))}
+          {status?.checklist && status.checklist.length > 0 ? (
+            status.checklist.map((item: any, idx: number) => {
+              const isMissing = item.status === "pending" || item.status === "overdue";
+              return (
+                <div key={idx} className={`flex items-center gap-3 rounded-lg border p-3 ${isMissing ? "border-amber-500/15 bg-amber-500/[0.03]" : "border-emerald-500/15 bg-emerald-500/[0.03]"}`}>
+                  {isMissing ? (
+                    <XCircle className="h-4 w-4 text-amber-400 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                  )}
+                  <div className="flex flex-col">
+                    <span className="text-sm text-white/70">{item.item}</span>
+                    {isMissing && item.instructions && (
+                      <span className="text-[10px] font-mono text-amber-500/60 mt-0.5">{item.instructions}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-sm font-mono text-white/40 text-center py-4">No filing checklist generated for this period.</div>
+          )}
         </div>
       </Card>
 

@@ -10,14 +10,15 @@ class GSTReadinessChecker:
                 select(Obligation).where(and_(Obligation.business_id == business_id, Obligation.domain == "GST"))
             )
         ).all()
-        score = 0
-        if business and business.gst_registered:
-            score += 20
-        score += 20 if any("GSTR-1" in (o.title or "") and o.status == "compliant" for o in obligations) else 10
-        score += 20 if any("reconciliation" in (o.description or "").lower() for o in obligations) else 10
-        score += 20 if any("ITC" in (o.description or "") for o in obligations) else 10
-        score += 20 if any(o.status == "compliant" for o in obligations) else 10
-        return float(min(100, score))
+        
+        if not obligations:
+            return 100.0 if business and business.gst_registered else 0.0
+
+        total_obs = len(obligations)
+        compliant_obs = sum(1 for o in obligations if o.status == "compliant")
+        
+        score = (compliant_obs / total_obs) * 100.0
+        return float(min(100.0, score))
 
     async def get_filing_checklist(self, business_id: str, period: str, db_session) -> list[dict]:
         obligations = (

@@ -10,6 +10,8 @@ def _domain_filters_from_profile(business_profile: dict[str, Any]) -> list[str]:
     return domains
 
 
+from .embedder import Embedder
+
 def retrieve_relevant_regulations(
     query: str, business_profile: dict[str, Any], n_results: int = 5, persist_dir: str = "./chroma_db"
 ) -> list[dict]:
@@ -17,7 +19,9 @@ def retrieve_relevant_regulations(
     domains = _domain_filters_from_profile(business_profile)
     
     # Manually embed the query to avoid potential hangs in Chroma's automatic embedding handling
-    query_vector = store.embedder.embed_text(query)
+    # Create Embedder here locally so ONNX Runtime doesn't segfault across threads!
+    local_embedder = Embedder()
+    query_vector = local_embedder.embed_text(query)
     
     per_domain = max(1, n_results // max(1, len(domains)))
     docs: list[dict] = []

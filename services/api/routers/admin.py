@@ -247,12 +247,17 @@ async def trigger_change(payload: TriggerChangeRequest, db: AsyncSession = Depen
     from services.agents.irda.orchestrator import IRDAOrchestrator
     from services.knowledge.obligation_graph.graph_builder import ObligationGraphBuilder
 
-    # Fetch current portal data from file for mutation
-    portal_file = _mock_portal_path(payload.portal)
-    if not portal_file.exists():
-        raise HTTPException(status_code=404, detail="Portal file not found")
-
-    content = json.loads(portal_file.read_text(encoding="utf-8"))
+    db_portal_name = payload.portal.replace("-", "_")
+    latest = await db.scalar(
+        select(RegulationSnapshot)
+        .where(RegulationSnapshot.portal_name == db_portal_name)
+        .order_by(RegulationSnapshot.fetched_at.desc())
+        .limit(1)
+    )
+    if not latest or not latest.raw_content:
+        raise HTTPException(status_code=404, detail="No portal snapshot found in database to override. Please wait for the initial scrape.")
+        
+    content = latest.raw_content
     changed = False
     old_value = None
     for reg in content.get("regulations", []):

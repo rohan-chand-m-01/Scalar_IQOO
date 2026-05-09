@@ -2,9 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
     groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
 
     database_url: str = "postgresql+asyncpg://rguser:rgpass123@localhost:5432/regraph"
     sync_database_url: str = "postgresql://rguser:rgpass123@localhost:5432/regraph"

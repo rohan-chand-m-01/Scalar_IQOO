@@ -38,22 +38,38 @@ export default function HITLPage() {
   const resolve = async () => {
     if (!confirmAction) return;
     const { id, decision } = confirmAction;
-    await api.post(`/hitl/queue/${id}/resolve`, {
-      decision,
-      notes: notes[id] ?? "",
-      approver_id: "demo_reviewer",
-    });
-    toast({
-      title: `${decision === "approved" ? "✓ Approved" : "✗ Rejected"}`,
-      description: "Action recorded in CAAL ledger.",
-    });
+    try {
+      await api.post(`/hitl/queue/${id}/resolve`, {
+        decision,
+        notes: notes[id] ?? "",
+        approver_id: "demo_reviewer",
+      });
+      toast({
+        title: `${decision === "approved" ? "✓ Approved" : "✗ Rejected"}`,
+        description: "Action recorded in CAAL ledger.",
+      });
+    } catch (err) {
+      toast({
+        title: "Action failed",
+        description: "Could not reach the API. Please try again.",
+        variant: "destructive",
+      });
+    }
     setConfirmAction(null);
     await load();
   };
 
   const createTest = async () => {
-    await api.post("/hitl/queue/test-create?business_id=11111111-1111-1111-1111-111111111001");
-    toast({ title: "Test HITL item created", description: "A mock divergence scenario has been added." });
+    try {
+      await api.post("/hitl/queue/test-create?business_id=11111111-1111-1111-1111-111111111001");
+      toast({ title: "Test HITL item created", description: "A mock divergence scenario has been added." });
+    } catch (err) {
+      toast({
+        title: "Creation failed",
+        description: "Could not reach the API. Please try again.",
+        variant: "destructive",
+      });
+    }
     await load();
   };
 

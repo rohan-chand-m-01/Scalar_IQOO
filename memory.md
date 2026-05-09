@@ -420,6 +420,57 @@ Implemented:
    - `MOCK_PT_URL` updated to `https://state-pt.vercel.app/`
    - Verified that the IRDA Watcher can fetch the HTML from these URLs and extract the embedded JSON regulations via regex correctly.
 
+### Task: PHASE 11 - System Deployment and Version Control
+**Status:** Completed  
+**Date:** 2026-05-09
+
+Implemented:
+1. **Local Deployment Verification**:
+   - Started the backend microservices (`api`, `postgres`, `redis`, `scheduler`) using `docker-compose up -d`.
+   - Started the Next.js frontend dashboard using `npm run dev` in `apps/web` (running on port 3002).
+   - Verified system readiness for real-time monitoring of external portals.
+2. **Version Control Sync**:
+   - Merged the `fallback` branch containing all live-scraping and embedded JSON portal changes into the `main` branch.
+   - Pushed the finalized architecture to the remote repository (`origin/main`).
+
+### Task: PHASE 12 - Dynamic GST Filing Data Update
+**Status:** Completed  
+**Date:** 2026-05-09
+
+Implemented:
+1. **Dynamic Financial Generation (`services/api/routers/gst.py`)**:
+   - Replaced hardcoded values (`total_gst_liability`, `input_tax_credit`, `net_payable`) with deterministic dynamic values.
+   - Introduced `_deterministic_financials(business_id: UUID)` which uses a hash of the `business_id` to generate realistic but consistent financial figures for each business.
+2. **Integrated `GSTReadinessChecker`**:
+   - Refactored `compute_filing_status` to use the actual `GSTReadinessChecker` agent (`compute_readiness_score` and `get_filing_checklist`) instead of hardcoded rules.
+   - The checklist and missing items in the UI are now accurately populated from the actual `Obligation` status corresponding to the specific business.
+
+### Task: PHASE 13 - Cascade Engine Wiring & Demo Trigger Fix
+**Status:** Completed  
+**Date:** 2026-05-09
+
+Implemented:
+1. **Wired `CascadeEngine` to `IRDAOrchestrator` (`services/agents/irda/orchestrator.py`)**:
+   - Fixed a bug where the IRDA agent detected portal deltas and created `ComplianceAlert` records, but failed to actually generate the new database `Obligation` records.
+   - Instantiated `CascadeEngine` in the Orchestrator and executed `evaluate_regulation_change_cascade` for any `changed_ids`, ensuring that changes actually reflect in the database for the GST filing UI to render.
+2. **Fixed Demo Trigger Endpoint (`services/api/routers/admin.py`)**:
+   - The UI "Trigger Change" button was crashing (HTTP 404) because it was attempting to read from deleted local mock JSON files (`regulations.json`).
+   - Refactored `trigger_change` to query the latest `RegulationSnapshot` from the Postgres database. It now correctly pulls the real, live-scraped baseline data, mutates it, pushes the override to Redis, and triggers the Cascade Engine.
+
+### Task: PHASE 14 - Assistant Resilience & Ledger Fixes
+**Status:** Completed  
+**Date:** 2026-05-09
+
+Implemented:
+1. **RAG Embedding Fallback (`services/knowledge/rag/embedder.py` & `rail_a.py`)**:
+   - The RAG system was permanently crashing and hanging the assistant due to the `models/text-embedding-004` model returning a 404 error combined with a 5-attempt exponential backoff.
+   - Reduced backoff to fail-fast.
+   - Wrapped the RAG retrieval in `RailA` with a `try/except` block. If embeddings fail, the Assistant now safely falls back to a direct LLM call using just the business profile and rule engine nodes, preventing the `POST /assistant/chat` endpoint from hanging.
+2. **CAAL Ledger Serialization (`services/api/routers/assistant.py`)**:
+   - The `Assistant` endpoint was crashing with a 500 Internal Server Error when DRCA attempted to write to the `caal_ledger`.
+   - The `business.__dict__` passed into the payload contained a non-serializable SQLAlchemy internal state (`_sa_instance_state`) and Python `UUID` objects.
+   - Implemented a parser to strip internal states and convert `UUID` and `datetime` objects to strings, allowing Postgres to successfully insert the `JSONB` audit trail.
+
 ## How To Use This Memory File
 
 - Append a new section under **Implementation Log** after each task.
