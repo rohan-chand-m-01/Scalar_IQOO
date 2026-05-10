@@ -291,6 +291,7 @@ Every compliance assessment runs through two independent rails:
 
 If `|confidence_A - confidence_B| > threshold`, the result is automatically escalated to the HITL queue. This ensures no fully autonomous decision is made when the AI is uncertain.
 
+
 ### Cryptographic Audit Trail (CAAL)
 Every agent action is:
 1. Serialized with all input/output context
