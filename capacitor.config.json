@@ -1,0 +1,6 @@
+{
+  "appId": "com.heapify.nmit.app",
+  "appName": "HEAPIFY NMIT",
+  "webDir": "apps/web/out",
+  "bundledWebRuntime": false
+}

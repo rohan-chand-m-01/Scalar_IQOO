@@ -197,7 +197,7 @@ export default function ComplianceFeedPage() {
       : null;
 
   const portalUnreachable =
-    ws.lastEvent?.event === "portal_unreachable" ? ws.lastEvent : null;
+    ws.lastEvent?.event === "portal_unreachable" ? (ws.lastEvent as any) : null;
 
   return (
     <div className="space-y-5">
