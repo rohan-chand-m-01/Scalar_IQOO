@@ -1,8 +1,14 @@
 import { SignUp } from "@clerk/nextjs";
 
+export const dynamicParams = true;
+
 export function generateStaticParams() {
   return [
-    { "sign-up": [] }
+    { "sign-up": [] },
+    { "sign-up": ["sso-callback"] },
+    { "sign-up": ["verify-email-address"] },
+    { "sign-up": ["verify-phone-number"] },
+    { "sign-up": ["continue"] },
   ];
 }
 

@@ -497,6 +497,51 @@ Implemented:
 4. **GST UI Adjustments (`apps/web/app/(dashboard)/gst-filing/page.tsx`)**:
    - Removed the `ConfidenceScore` graph component from the GST page as requested, adjusting the CSS Grid to perfectly center and expand the remaining summary cards.
 
+### Task: PHASE 17 - White Screen Bug Fix & Static Export Compatibility
+**Status:** Completed  
+**Date:** 2026-06-13
+
+Implemented:
+1. **Root Layout Hydration Fix (`apps/web/app/layout.tsx`)**:
+   - Moved `<html>` and `<body>` tags **outside** of `<ClientProviders>`.
+   - Previously, `ClientProviders` (a `"use client"` component with a `!mounted` guard) wrapped the entire `<html>` and `<body>`, meaning the server never emitted these tags. This prevented CSS from loading and caused a complete white screen on first paint, plus a severe React hydration mismatch.
+   - Now `<html>` and `<body>` are always server-rendered, with `<ClientProviders>` wrapping only the page content inside `<body>`.
+
+2. **Tailwind Dark Mode Configuration (`apps/web/tailwind.config.ts`)**:
+   - Added `darkMode: "class"` as the first property in the Tailwind config.
+   - Without this, Tailwind defaulted to OS-level `prefers-color-scheme` media query detection and completely ignored the `className="dark"` on the `<html>` tag. Any user on a light-mode OS saw a broken white UI.
+
+3. **Clerk Dark Theme (`apps/web/components/ClientProviders.tsx`)**:
+   - Installed `@clerk/themes` package.
+   - Imported `dark` from `@clerk/themes` and passed `appearance={{ baseTheme: dark }}` to `ClerkProvider`.
+   - Without this, Clerk's authentication cards (sign-in, sign-up) rendered with a bright white background, clashing with the dark theme.
+   - Updated loading fallback text from "Loading HEAPIFY..." to "Loading RegGraph AI...".
+
+4. **Static Export for Capacitor/Android (`apps/web/next.config.mjs`)**:
+   - Added `trailingSlash: true` (required for Capacitor's `file://` protocol to correctly resolve directory-based routes like `/sign-in/` → `sign-in/index.html`).
+   - `output: 'export'` was already present.
+
+5. **Middleware Simplification (`apps/web/middleware.ts`)**:
+   - Replaced the server-side `auth().protect()` route-blocking middleware with a simple passthrough `clerkMiddleware()`.
+   - The old middleware required a server runtime, which is incompatible with static export. Auth is now handled client-side by ClerkProvider.
+   - Updated matcher patterns to the recommended Clerk configuration.
+
+6. **Clerk Auth Static Params Fix (`apps/web/app/(auth)/sign-in/[[...sign-in]]/page.tsx` & `sign-up` equivalent)**:
+   - Added `export const dynamicParams = true` to both sign-in and sign-up pages.
+   - Expanded `generateStaticParams()` to include all Clerk callback sub-routes: `sso-callback`, `factor-one`, `factor-two`, `reset-password`, `choose-strategy`, `verify-email-address`, `verify-phone-number`, `continue`.
+   - Clerk probes random catch-all paths at runtime (`SignIn_clerk_catchall_check_<timestamp>`) to verify route support. Without `dynamicParams = true`, Next.js threw a fatal error for any param not in the static list.
+
+7. **Capacitor Sync**:
+   - Ran `npx cap add android` and `npx cap sync android`.
+   - Static export (`apps/web/out/`) successfully copied to `android/app/src/main/assets/public`.
+
+Validation:
+- Landing page: Dark orange/black theme loads immediately, no white flash.
+- Sign-in page: Clerk card renders with dark background.
+- SSO callback: `/sign-in/sso-callback` loads without `generateStaticParams` error.
+- Static build: 17/17 pages exported successfully.
+- Zero React hydration errors in console.
+
 ## How To Use This Memory File
 
 - Append a new section under **Implementation Log** after each task.

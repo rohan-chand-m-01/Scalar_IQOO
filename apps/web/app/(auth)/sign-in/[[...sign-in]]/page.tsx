@@ -1,8 +1,15 @@
 import { SignIn } from "@clerk/nextjs";
 
+export const dynamicParams = true;
+
 export function generateStaticParams() {
   return [
-    { "sign-in": [] }
+    { "sign-in": [] },
+    { "sign-in": ["sso-callback"] },
+    { "sign-in": ["factor-one"] },
+    { "sign-in": ["factor-two"] },
+    { "sign-in": ["reset-password"] },
+    { "sign-in": ["choose-strategy"] },
   ];
 }
 

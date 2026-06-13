@@ -27,15 +27,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClientProviders>
-      <html lang="en" className={cn("dark font-sans")}>
+    <html lang="en" className={cn("dark font-sans")}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
-        <Toaster />
+        <ClientProviders>
+          {children}
+          <Toaster />
+        </ClientProviders>
       </body>
-      </html>
-    </ClientProviders>
+    </html>
   );
 }
