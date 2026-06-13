@@ -87,7 +87,6 @@ coverage/
 *.lcov
 
 # Lock files (optional, depends on project)
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
