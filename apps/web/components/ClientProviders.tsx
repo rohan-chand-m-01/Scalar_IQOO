@@ -18,5 +18,6 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <ClerkProvider>{children}</ClerkProvider>;
+  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "pk_test_cnVsaW5nLWFraXRhLTUzLmNsZXJrLmFjY291bnRzLmRldiQ";
+  return <ClerkProvider publishableKey={publishableKey}>{children}</ClerkProvider>;
 }
